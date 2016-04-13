@@ -48,13 +48,7 @@ public class Main extends Application {
 
 
         Timeline timeline = new Timeline(new KeyFrame(Duration.millis(60000),
-                new EventHandler<ActionEvent>() {
-                    @Override
-                    public void handle(ActionEvent actionEvent) {
-
-                    }
-                }
-//                actionEvent -> loadStash()
+                actionEvent -> loadStash()
         ));
         timeline.setCycleCount(Animation.INDEFINITE);
 

@@ -5,7 +5,6 @@ import javax.annotation.Generated;
 import java.util.HashMap;
 import java.util.Map;
 
-@Generated("org.jsonschema2pojo")
 public class Tab {
 
     public String n;
