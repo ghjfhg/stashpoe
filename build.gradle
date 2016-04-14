@@ -24,6 +24,7 @@ repositories {
 mainClassName = "wunderlich.Main"
 
 dependencies {
+    compile 'com.google.guava:guava:19.0'
 	compile 'org.apache.httpcomponents:httpclient:4.5.2'
     compile 'com.fasterxml.jackson.core:jackson-databind:2.7.3'
 

@@ -1,7 +1,6 @@
 
 package wunderlich.model;
 
-import javax.annotation.Generated;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,4 +26,8 @@ public class Tab {
         this.additionalProperties.put(name, value);
     }
 
+    @Override
+    public String toString() {
+        return ""+i+ ": "+n;
+    }
 }

@@ -1,15 +1,14 @@
 package wunderlich;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Throwables;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
-import javafx.beans.binding.Bindings;
+import javafx.beans.property.SimpleLongProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.ListChangeListener;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -28,6 +27,8 @@ import wunderlich.model.Item;
 import wunderlich.model.Stash;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
 
 public class Main extends Application {
 
@@ -39,23 +40,52 @@ public class Main extends Application {
     TableView<Item> items = new TableView<>();
     TextField tabIndex = new TextField("");
     TextField poesessid = new TextField("");
+    SimpleLongProperty progressCounter=new SimpleLongProperty(0);
+    int intervalInSecounds=60;
+
     @Override
     public void start(Stage stage) throws Exception {
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread t, Throwable e) {
+                Alert alert = new Alert(Alert.AlertType.ERROR)   ;
+                alert.setContentText(e.getMessage());
+                alert.getDialogPane().setContent(new TextArea(Throwables.getStackTraceAsString(e)));
+                alert.show();
+                e.printStackTrace();;
+            }
+        });
+
+
+
         BorderPane parent = new BorderPane();
         parent.setCenter(items);
         stage.setScene(new Scene(parent,600,400));
 
 
 
-        Timeline timeline = new Timeline(new KeyFrame(Duration.millis(60000),
-                actionEvent -> loadStash()
+        Timeline timeline = new Timeline(new KeyFrame(Duration.seconds(1),
+                actionEvent -> {
+                    progressCounter.set(progressCounter.get()+1);
+                    if (progressCounter.get()%intervalInSecounds==0){
+                        loadStash();
+                    }
+                }
         ));
         timeline.setCycleCount(Animation.INDEFINITE);
 
         items.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        TableColumn<Item, String> nameCol = new TableColumn<>("Name");
-        nameCol.setCellValueFactory(itemStringCellDataFeatures -> new SimpleStringProperty(itemStringCellDataFeatures.getValue().name));
-        items.getColumns().add(nameCol);
+        {
+            TableColumn<Item, String> nameCol = new TableColumn<>("Name");
+            nameCol.setCellValueFactory(itemStringCellDataFeatures -> {
+                String name = itemStringCellDataFeatures.getValue().name;
+                if (name!=null){
+                    name=name.replaceFirst("<<.*>>","");
+                }
+                return new SimpleStringProperty(name) ;
+            });
+            items.getColumns().add(nameCol);
+        }
         {
             TableColumn<Item, String> ilevelCol = new TableColumn<>("Item Level");
             ilevelCol.setCellValueFactory(itemStringCellDataFeatures -> new SimpleStringProperty("" + itemStringCellDataFeatures.getValue().ilvl));
@@ -104,10 +134,25 @@ public class Main extends Application {
             HBox control = new HBox(3);
             control.setPadding(new Insets(3));
             control.setAlignment(Pos.CENTER_LEFT);
-            control.getChildren().add(new Label("TabIndex:"));
-            control.getChildren().add(tabIndex);
             control.getChildren().add(new Label("POESESSID:"));
             control.getChildren().add(poesessid);
+            control.getChildren().add(new Label("TabIndex:"));
+            control.getChildren().add(tabIndex);
+            tabIndex.disableProperty().bind(poesessid.textProperty().isEmpty());
+            Button searchTabButton = new Button("...");
+            searchTabButton.setOnAction(event -> {
+                ChoiceDialog<wunderlich.model.Tab> dialog = new ChoiceDialog<>(null, getStashTabList());
+                dialog.setTitle("Choice Tab");
+                dialog.setHeaderText("Choice Tab");
+                dialog.setContentText("Choose your Tab:");
+
+                Optional<wunderlich.model.Tab> result = dialog.showAndWait();
+                if (result.isPresent()){
+                    tabIndex.setText(""+result.get().i);
+                }
+            });
+            searchTabButton.disableProperty().bind(poesessid.textProperty().isEmpty());
+            control.getChildren().add(searchTabButton);
             Button start = new Button("start");
             start.setOnAction(actionEvent -> {
                 timeline.play();
@@ -116,12 +161,12 @@ public class Main extends Application {
             start.disableProperty().bind(tabIndex.textProperty().isEmpty().or(poesessid.textProperty().isEmpty()).or(timeline.statusProperty().isEqualTo(Animation.Status.RUNNING)));
             control.getChildren().add(start);
             ProgressBar progressBar = new ProgressBar();
-            progressBar.progressProperty().bind(Bindings.createDoubleBinding(() -> {
-                if (timeline.getStatus().equals(Animation.Status.RUNNING)) {
-                    return -1.0;
-                }
-                return 0.0;
-            }, timeline.statusProperty()));
+            progressCounter.addListener((observable, oldValue, newValue) -> {
+                  if(newValue!=null){
+                      progressBar.setProgress((newValue.longValue()%intervalInSecounds)/(double)intervalInSecounds);
+                  }
+            });
+            progressBar.setProgress(0);
             control.getChildren().add(progressBar);
             parent.setTop(control);
         }
@@ -129,6 +174,35 @@ public class Main extends Application {
 
 
         stage.show();
+    }
+
+    private List<wunderlich.model.Tab> getStashTabList(){
+        CloseableHttpClient httpclient = HttpClients.createDefault();
+        HttpGet httpGet = new HttpGet("http://www.pathofexile.com/character-window/get-stash-items?accountName=Gandalfuss&league=Perandus&tabs=1");
+        httpGet.setHeader("Cookie", "POESESSID="+poesessid.getText()+"; session_start=0;");
+
+        CloseableHttpResponse response1 = null;
+        try {
+            response1 = httpclient.execute(httpGet);
+            try {
+                System.out.println(response1.getStatusLine());
+                HttpEntity entity1 = response1.getEntity();
+                // do something useful with the response body
+                // and ensure it is fully consumed
+                String content = EntityUtils.toString(entity1);
+                System.out.println(content);
+
+                ObjectMapper objectMapper = new ObjectMapper();
+                Stash stash = objectMapper.readValue(content, Stash.class);
+
+                EntityUtils.consume(entity1);
+                return  stash.tabs;
+            } finally {
+                response1.close();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void loadStash() {
